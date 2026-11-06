@@ -578,7 +578,7 @@ const I = {
 };
 
 /* ========================== estado ========================== */
-let S = null, sesion = store.get("gd_sesion"), imgs = {};
+let S = null, sesion = store.get("gd_sesion"), imgs = (()=>{ try{ return JSON.parse(store.get("gd_imgs")||"{}"); }catch(e){ return {}; } })();
 let tab = "inicio", stack = [], calMes = null, calSel = null, capas = {c:true,f:true,v:true}, verEntregadas = false, intTab = "int";
 let ultimaCarga = 0, logueadas = {}, rechId = null, instalarEvt = null;
 let verComo = null, datosPropios = null, areaFiltro = "Todas";
@@ -589,10 +589,13 @@ async function api(accion, datos, extra){
   const body = Object.assign({accion, datos: datos || {}}, extra || {});
   if(!body.idToken) body.sesion = sesion;
   if(verComo && (accion === "init" || accion === "imagenes")) body.verComo = verComo;
-  let r;
-  try { r = await fetch(CFG.API_URL, {method:"POST", body: JSON.stringify(body)}); }
-  catch(e){ throw new Error("Sin conexión. Revisá internet y probá de nuevo."); }
-  const j = await r.json();
+  let r, j;
+  const ctrl = new AbortController(), corte = setTimeout(()=>ctrl.abort(), 25000);
+  try { r = await fetch(CFG.API_URL, {method:"POST", body: JSON.stringify(body), signal: ctrl.signal}); }
+  catch(e){ throw new Error(e.name === "AbortError" ? "El servidor tardó demasiado. Probá de nuevo en un rato." : "Sin conexión. Revisá internet y probá de nuevo."); }
+  finally { clearTimeout(corte); }
+  try { j = await r.json(); }
+  catch(e){ throw new Error("El servidor respondió con un error. Probá de nuevo en un rato."); }
   if(j.sesion){ sesion = j.sesion; store.set("gd_sesion", sesion); }
   if(!j.ok){
     const e = new Error(j.error || "Error"); e.codigo = j.codigo;
@@ -631,7 +634,7 @@ function mostrarLogin(msg){
   initGoogle();
 }
 function salir(msg){
-  sesion = null; store.del("gd_sesion"); store.del("gd_cache"); S = null;
+  sesion = null; store.del("gd_sesion"); store.del("gd_cache"); store.del("gd_imgs"); store.del("gd_imgs_t"); imgs = {}; S = null;
   try { google.accounts.id.disableAutoSelect(); } catch(e){}
   openSheet(null); mostrarLogin(typeof msg === "string" ? msg : "");
 }
@@ -656,8 +659,15 @@ async function recargar(silencioso){
   catch(e){ if(!silencioso) toast(e.message); }
   finally { cargando(false); }
 }
-async function cargarImagenes(){
-  try { imgs = Object.assign(imgs, await api("imagenes")); if(tab==="obras"||stack.length) refresh(); } catch(e){}
+// Fotos de obras: se guardan en el teléfono y se piden al servidor como mucho cada 6 horas (o con "Actualizar datos").
+async function cargarImagenes(forzar){
+  const t = Number(store.get("gd_imgs_t")||0);
+  if(!forzar && Object.keys(imgs).length && Date.now()-t < 6*3600*1000) return;
+  try {
+    imgs = Object.assign({}, imgs, await api("imagenes"));
+    store.set("gd_imgs", JSON.stringify(imgs)); store.set("gd_imgs_t", String(Date.now()));
+    if(tab==="obras"||stack.length) refresh();
+  } catch(e){}
 }
 
 /* ========================== utilidades ========================== */
@@ -924,7 +934,7 @@ document.addEventListener("click", async e=>{
     api("leer",{id:c.id}).catch(err=>{ c.leido=false; refresh(); toast(err.message); }); return;
   }
   if(b.dataset.apr){ return accion("aprobar",{id:b.dataset.apr},"Listo. Se avisó por mail."); }
-  if(b.id==="salirprevia"){ verComo=null; imgs={}; if(datosPropios) setDatos(datosPropios); go("inicio"); recargar(true); cargarImagenes(); return; }
+  if(b.id==="salirprevia"){ verComo=null; if(datosPropios) setDatos(datosPropios); go("inicio"); recargar(true); cargarImagenes(); return; }
   if((b.dataset.rech||b.id==="newcom"||b.id==="editobra") && enPrevia()) return;
   if(b.dataset.rech){ rechId=b.dataset.rech; const r=S.porAprobar.find(x=>x.id===rechId); $("#rechinfo").textContent=r?`${r.nombre} · ${rango(r.desde,r.hasta)}`:""; $("#rmotivo").value=""; return openSheet("rech"); }
   if(b.id==="newcom"){ paraSel=new Set(["todos"]); persSel=new Set(); persAbierto=false; ["#ctit","#ctxt","#cfecha","#cvence","#chasta"].forEach(s=>$(s).value=""); $("#clect").checked=false; $("#cmail").checked=true; $("#cfijo").checked=false; renderPara(); return openSheet("com"); }
@@ -997,8 +1007,8 @@ document.addEventListener("change", async e=>{
   if(e.target.id==="areasel"){ areaFiltro=e.target.value; return renderCal(); }
   if(e.target.id!=="verpick") return;
   const mail=e.target.value; openSheet(null);
-  if(!mail){ if(verComo){ verComo=null; imgs={}; if(datosPropios) setDatos(datosPropios); go("inicio"); } return; }
-  verComo=mail; imgs={}; cargando(true);
+  if(!mail){ if(verComo){ verComo=null; if(datosPropios) setDatos(datosPropios); go("inicio"); } return; }
+  verComo=mail; cargando(true);
   try { setDatos(await api("init")); stack=[]; go("inicio"); cargarImagenes(); }
   catch(err){ verComo=null; if(datosPropios) setDatos(datosPropios); toast(err.message); }
   finally { cargando(false); }
@@ -1013,7 +1023,7 @@ $("#me").onclick=()=>{
     <select class="verpick" id="verpick"><option value="">Ver la app como…</option>${base.personas.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(p=>`<option value="${esc(p.mail)}" ${p.mail===verComo?"selected":""}>${esc(p.nombre)}${p.area?" · "+esc(p.area):""}</option>`).join("")}</select>` : "";
   $("#lastsync").textContent = ultimaCarga?"Última actualización: "+new Date(ultimaCarga).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}):""; openSheet("me"); };
 $("#scrim").onclick=()=>openSheet(null);
-$("#refresh").onclick=()=>{ openSheet(null); recargar(false); cargarImagenes(); };
+$("#refresh").onclick=()=>{ openSheet(null); recargar(false); cargarImagenes(true); };
 $("#install").onclick=()=>{ openSheet(null); instalar(); };
 $("#logout").onclick=()=>salir("");
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && S && Date.now()-ultimaCarga>5*60*1000) recargar(true); });
@@ -1025,7 +1035,8 @@ if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch
     const c=store.get("gd_cache");
     if(c){ try{ setDatos(JSON.parse(c)); entrar(); }catch(e){} }
     else cargando(true);
-    api("init").then(dd=>{ setDatos(dd); if($("#login").style.display!=="none") entrar(); }).catch(()=>{}).finally(()=>cargando(false));
+    api("init").then(dd=>{ setDatos(dd); if($("#login").style.display!=="none") entrar(); })
+      .catch(e=>{ if(!S) mostrarLogin(e.message); else if(!c) toast(e.message); }).finally(()=>cargando(false));
   } else mostrarLogin("");
 })();
 </script>
