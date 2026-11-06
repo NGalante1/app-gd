@@ -371,6 +371,12 @@ nav button{font-size:10.5px}
 .sug{padding:12px 14px;border-top:1px solid var(--line);font-size:14px}
 .sug:first-child{border-top:0}
 .sug span{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+.previa{position:sticky;top:54px;z-index:19;background:#2F7DA8;color:#fff;font-size:13px;padding:8px 14px;display:flex;align-items:center;gap:10px}
+.previa b{font-weight:600}
+.previa button{margin-left:auto;color:#fff;border:1px solid rgba(255,255,255,.6);border-radius:16px;padding:3px 10px;font-size:12px;font-weight:600}
+.verpick{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;margin-top:6px}
+.grid .d .cnt{position:absolute;top:3px;right:3px;min-width:15px;height:15px;border-radius:8px;background:#2F7DA8;color:#fff;font-size:10px;font-weight:600;line-height:15px;text-align:center;padding:0 3px}
+.grid .d.sel .cnt{background:#fff;color:#2F7DA8}
 .err{padding:14px;background:#F6E1E1;color:#8a2a2a;border-radius:var(--r);font-size:14px;margin-top:12px}
 </style>
 <script src="config.js"></script>
@@ -395,6 +401,7 @@ nav button{font-size:10.5px}
     <h1 id="title"></h1>
     <button class="avatar" id="me"></button>
   </header>
+  <div class="previa" id="previa" hidden></div>
 
   <main>
     <section class="screen" id="s-inicio">
@@ -443,8 +450,8 @@ nav button{font-size:10.5px}
       <div id="misaldo"></div>
       <div id="aprobar"></div>
       <div id="saldos"></div>
-      <h2>Mis pedidos</h2>
-      <div class="list" id="mios"></div>
+      <div id="misbloque"><h2>Mis pedidos</h2>
+      <div class="list" id="mios"></div></div>
       <div id="uso"></div>
       <h2>Buzón de sugerencias</h2>
       <div class="card" style="padding:14px">
@@ -470,6 +477,7 @@ nav button{font-size:10.5px}
     <div class="grab"></div>
     <h3 id="uname"></h3>
     <div class="mute" style="font-size:14px" id="umeta"></div>
+    <div id="vercomo"></div>
     <div class="list" style="margin-top:16px">
       <button class="row" id="refresh"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5"/></svg></div><div class="t"><b>Actualizar datos</b><span id="lastsync"></span></div></button>
       <button class="row" id="install"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg></div><div class="t"><b>Instalar en el celular</b><span>Agregar el ícono de G&amp;D a la pantalla de inicio</span></div></button>
@@ -570,12 +578,14 @@ const I = {
 let S = null, sesion = store.get("gd_sesion"), imgs = {};
 let tab = "inicio", stack = [], calMes = null, calSel = null, capas = {c:true,f:true,v:true}, verEntregadas = false, intTab = "int";
 let ultimaCarga = 0, logueadas = {}, rechId = null, instalarEvt = null;
+let verComo = null, datosPropios = null, areaFiltro = "Todas";
 
 /* ========================== API ========================== */
 async function api(accion, datos, extra){
   if(!CFG.API_URL) throw new Error("Falta configurar API_URL en config.js");
   const body = Object.assign({accion, datos: datos || {}}, extra || {});
   if(!body.idToken) body.sesion = sesion;
+  if(verComo && (accion === "init" || accion === "imagenes")) body.verComo = verComo;
   let r;
   try { r = await fetch(CFG.API_URL, {method:"POST", body: JSON.stringify(body)}); }
   catch(e){ throw new Error("Sin conexión. Revisá internet y probá de nuevo."); }
@@ -590,7 +600,9 @@ async function api(accion, datos, extra){
 }
 function cargando(on){ $("#loading").classList.toggle("on", !!on); }
 function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("on"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("on"),3200); }
+function enPrevia(){ if(verComo){ toast("Vista previa: no se pueden hacer cambios"); return true; } return false; }
 async function accion(nombre, datos, okMsg){
+  if(enPrevia()) throw new Error("vista previa");
   cargando(true);
   try { const d = await api(nombre, datos); if(d && d.yo){ setDatos(d); } if(okMsg) toast(okMsg); return d; }
   catch(e){ toast(e.message); throw e; }
@@ -626,7 +638,9 @@ function entrar(){
 }
 function setDatos(datos){
   S = datos; ultimaCarga = Date.now();
-  store.set("gd_cache", JSON.stringify(datos));
+  if(!verComo){ datosPropios = datos; store.set("gd_cache", JSON.stringify(datos)); }
+  const pv=$("#previa"); pv.hidden = !verComo;
+  if(verComo) pv.innerHTML = `Viendo la app como <b>${esc(datos.yo.nombre)}</b><button id="salirprevia">Volver a mi vista</button>`;
   if(!calMes){ const h = d(S.hoy); calMes = new Date(h.getFullYear(), h.getMonth(), 1); }
   $("#me").textContent = S.yo.nombre.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
   $("#uname").textContent = S.yo.nombre;
@@ -652,8 +666,9 @@ const diasCorridos = (a,b) => Math.round((d(b)-d(a))/864e5)+1;
 const norm = s => String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
 const tagCls = t => ({feriado:"gris", obra:"verde"})[norm(t)]||"";
 function fmtTel(n){ const x=String(n).replace(/\D/g,""); if(x.length===10) return x.startsWith("11")?`${x.slice(0,2)} ${x.slice(2,6)}-${x.slice(6)}`:`${x.slice(0,3)} ${x.slice(3,6)}-${x.slice(6)}`; return String(n); }
+function fmtCuit(c){ const x=String(c||"").replace(/\D/g,""); return x.length===11?`${x.slice(0,2)}-${x.slice(2,10)}-${x.slice(10)}`:String(c||""); }
 function abrir(url){ if(url) window.open(url, "_blank", "noopener"); }
-function logSeccion(s){ if(logueadas[s]) return; logueadas[s]=1; api("log",{seccion:s}).catch(()=>{}); }
+function logSeccion(s){ if(verComo || logueadas[s]) return; logueadas[s]=1; api("log",{seccion:s}).catch(()=>{}); }
 
 function cover(o, cls=""){
   const nm = `<div class="nm">${esc(o.nombre)}<small>${esc(o.barrio)}</small></div>`;
@@ -722,14 +737,14 @@ function renderDetalle(o){
     <div class="list">
       ${o.direccion?`<a class="mapbtn" href="${maps}" target="_blank" rel="noopener"><div class="pin">${I.gota}</div><div class="t"><b>${esc(o.direccion)}</b><span>Abrir en Google Maps</span></div><div class="chev">${I.chev}</div></a>`:""}
       ${kv("Director de obra",o.director)}${kv("Administrativo a cargo",o.admin)}${kv("Estudio de arquitectura",o.estudio)}
-      ${kv("Horario de obra",o.horario)}${kv("Unidades",o.unidades)}
+      ${kv("Horario de obra",o.horario)}${kv("Tipologías",o.tipologias)}${kv("Unidades",o.unidades)}
     </div>
     <h2>Material comercial</h2>
     <div class="btns">${bt(o.lista,I.price,"Lista de precios")}${bt(o.brochure,I.book,"Brochure")}${bt(o.video,I.play,"Video")}</div>
     ${o.listaFecha?`<div class="note" style="margin:8px 2px 0">${I.info} Lista actualizada el ${esc(o.listaFecha)}</div>`:""}
-    ${o.socios||o.apoderados?`<h2>Sociedad</h2><div class="list">${kv("Socios",o.socios)}${kv("Apoderados",o.apoderados)}</div>`:""}
+    ${o.razonSocial||o.cuit||o.socios||o.apoderados?`<h2>Sociedad</h2><div class="list">${kv("Razón social",o.razonSocial)}${kv("CUIT",fmtCuit(o.cuit))}${kv("Socios",o.socios)}${kv("Apoderados",o.apoderados)}</div>`:""}
     ${docs.length?`<h2>Documentación</h2><div class="list">${docs.map(([t,u])=>`<button class="doc" data-url="${esc(u)}"><div class="ico">${I.lock2}</div><div class="t"><b>${t}</b><span>Acceso restringido</span></div><div class="chev">${I.chev}</div></button>`).join("")}</div>`:""}
-    ${o.act?`<div class="upd">Actualizado el ${esc(String(o.act).slice(0,10))}${o.actPor?" por "+esc(o.actPor):""}</div>`:""}`;
+    ${o.act?`<div class="upd">Actualizado el ${esc(o.act)}${o.actPor?" por "+esc(o.actPor):""}</div>`:""}`;
 }
 
 /* ========================== CALENDARIO ========================== */
@@ -737,7 +752,7 @@ function eventos(todo){
   const out=[];
   if(todo||capas.c) S.comunicados.filter(c=>c.fecha && c.meLlega).forEach(c=>out.push({fecha:c.fecha,fin:c.fecha,titulo:c.titulo,sub:c.tipo,tipo:"c"}));
   if(todo||capas.f) S.feriados.forEach(f=>out.push({fecha:f.fecha,fin:f.fecha,titulo:f.titulo,sub:f.origen==="G&D"?"G&D":"Feriado nacional",tipo:"f"}));
-  if(!todo && capas.v) S.ausencias.forEach(a=>out.push({fecha:a.desde,fin:a.hasta,titulo:a.propio?"Tus vacaciones":a.nombre+" · vacaciones",sub:a.area+" · "+rango(a.desde,a.hasta),tipo:"v"}));
+  if(!todo && capas.v) S.ausencias.filter(a=>areaFiltro==="Todas"||a.area===areaFiltro||a.propio).forEach(a=>out.push({fecha:a.desde,fin:a.hasta,titulo:a.propio?"Tus vacaciones":a.nombre+" · vacaciones",sub:a.area+" · "+rango(a.desde,a.hasta),tipo:"v"}));
   if(todo) S.ausencias.filter(a=>a.propio).forEach(a=>out.push({fecha:a.desde,fin:a.hasta,titulo:"Tus vacaciones",sub:rango(a.desde,a.hasta),tipo:"v"}));
   return out.sort((a,b)=>a.fecha.localeCompare(b.fecha));
 }
@@ -755,11 +770,14 @@ function renderCal(){
   for(let k=0;k<first;k++) h+=`<div class="d out"></div>`;
   for(let dd=1;dd<=n;dd++){
     const key=iso(new Date(y,m,dd));
-    const tipos=[...new Set(ev.filter(e=>e.fecha<=key && e.fin>=key).map(e=>e.tipo))];
-    h+=`<button class="d ${key===S.hoy?"hoy":""} ${calSel===key?"sel":""}" data-day="${key}">${dd}<span class="dots">${tipos.map(t=>`<i class="${t==="f"?"fer":t==="v"?"vac":""}"></i>`).join("")}</span></button>`;
+    const delDia=ev.filter(e=>e.fecha<=key && e.fin>=key);
+    const tipos=[...new Set(delDia.filter(e=>e.tipo!=="v").map(e=>e.tipo))];
+    const nVac=delDia.filter(e=>e.tipo==="v").length;
+    h+=`<button class="d ${key===S.hoy?"hoy":""} ${calSel===key?"sel":""}" data-day="${key}">${nVac?`<span class="cnt">${nVac}</span>`:""}${dd}<span class="dots">${tipos.map(t=>`<i class="${t==="f"?"fer":""}"></i>`).join("")}</span></button>`;
   }
   $("#grid").innerHTML=h;
-  $("#layers").innerHTML = `<button class="layer c ${capas.c?"on":""}" data-layer="c"><i></i>Comunicados</button><button class="layer f ${capas.f?"on":""}" data-layer="f"><i></i>Feriados</button><button class="layer v ${capas.v?"on":""}" data-layer="v"><i></i>${S.P.ausencias==="PROPIAS"?"Mis vacaciones":"Vacaciones del equipo"}</button>`;
+  $("#layers").innerHTML = `<button class="layer c ${capas.c?"on":""}" data-layer="c"><i></i>Comunicados</button><button class="layer f ${capas.f?"on":""}" data-layer="f"><i></i>Feriados</button><button class="layer v ${capas.v?"on":""}" data-layer="v"><i></i>${S.P.ausencias==="PROPIAS"?"Mis vacaciones":"Vacaciones del equipo"}</button>`
+    + (S.P.ausencias==="TODAS" ? `<select class="areasel" id="areasel">${["Todas",...new Set(S.ausencias.map(a=>a.area).filter(Boolean))].sort((a,b)=>a==="Todas"?-1:b==="Todas"?1:a.localeCompare(b)).map(a=>`<option ${a===areaFiltro?"selected":""}>${esc(a)}</option>`).join("")}</select>` : "");
   const lista = calSel ? ev.filter(e=>e.fecha<=calSel && e.fin>=calSel) : ev.filter(e=>e.fecha<=iso(new Date(y,m,n)) && e.fin>=iso(new Date(y,m,1)));
   $("#evtitle").textContent = calSel ? d(calSel).getDate()+" de "+MESES[d(calSel).getMonth()] : "Este mes";
   $("#evlist").innerHTML = lista.length?lista.map(evRow).join(""):`<div class="empty">${calSel?"Sin novedades ese día":"Sin fechas este mes"}</div>`;
@@ -812,6 +830,8 @@ function reqCard(r, acc){
   </div>`;
 }
 function renderGestiones(){
+  const vac = S.P.vacaciones !== false;
+  $("#pedir").hidden = !vac; $("#misbloque").hidden = !vac;
   $("#flowtxt").textContent = `Aprueba ${S.flujo.paso1} → valida ${S.flujo.paso2}`;
   $("#misaldo").innerHTML = S.miSaldo ? `<div class="card saldo-mio"><div><div style="font-weight:600">Tus días disponibles</div><div class="mute" style="font-size:13px">Te corresponden ${S.miSaldo.corresponden} · tomaste ${S.miSaldo.tomados}</div></div><b>${S.miSaldo.quedan}</b></div>` : "";
   const pend=S.porAprobar, ve = pend.length || S.P.validar || S.P.admin || S.P.ausencias==="SU AREA";
@@ -893,11 +913,14 @@ document.addEventListener("click", async e=>{
   if(b.id==="hintoff"){ store.set("gd_hint_off","1"); return renderInicio(); }
   if(b.id==="hintinst") return instalar();
   if(b.dataset.leer){
+    if(enPrevia()) return;
     const c=S.comunicados.find(x=>x.id===b.dataset.leer); if(!c || c.leido) return;
     c.leido=true; refresh(); toast("Confirmaste la lectura");
     api("leer",{id:c.id}).catch(err=>{ c.leido=false; refresh(); toast(err.message); }); return;
   }
   if(b.dataset.apr){ return accion("aprobar",{id:b.dataset.apr},"Listo. Se avisó por mail."); }
+  if(b.id==="salirprevia"){ verComo=null; imgs={}; if(datosPropios) setDatos(datosPropios); go("inicio"); recargar(true); cargarImagenes(); return; }
+  if((b.dataset.rech||b.id==="newcom"||b.id==="editobra") && enPrevia()) return;
   if(b.dataset.rech){ rechId=b.dataset.rech; const r=S.porAprobar.find(x=>x.id===rechId); $("#rechinfo").textContent=r?`${r.nombre} · ${rango(r.desde,r.hasta)}`:""; $("#rmotivo").value=""; return openSheet("rech"); }
   if(b.id==="newcom"){ paraSel=new Set(["todos"]); persSel=new Set(); persAbierto=false; ["#ctit","#ctxt","#cfecha","#cvence"].forEach(s=>$(s).value=""); $("#clect").checked=false; $("#cmail").checked=true; $("#cfijo").checked=false; renderPara(); return openSheet("com"); }
   if(b.dataset.para){
@@ -946,6 +969,7 @@ $("#eosend").onclick = async ()=>{
 };
 function vacPreview(){ const a=$("#vdesde").value, b=$("#vhasta").value; $("#vdias").textContent = a&&b ? (b<a?"La fecha final es anterior a la inicial":diasCorridos(a,b)+" días corridos"+(S.miSaldo?` · te quedan ${S.miSaldo.quedan}`:"")) : ""; }
 $("#pedir").onclick=()=>{
+  if(enPrevia()) return;
   $("#vflow").innerHTML = `1. Aprueba <b>${esc(S.flujo.paso1)}</b><br>2. Valida <b>${esc(S.flujo.paso2)}</b><br>Te llega un mail en cada paso.`;
   ["#vdesde","#vhasta","#vcom"].forEach(s=>$(s).value=""); vacPreview(); openSheet("vac");
 };
@@ -958,16 +982,31 @@ $("#vsend").onclick=async ()=>{
   go("gestiones");
 };
 $("#sugsend").onclick=async ()=>{
+  if(enPrevia()) return;
   const t=$("#sug").value.trim(); if(!t) return toast("Escribí tu sugerencia");
   await accion("sugerencia",{texto:t,anonimo:$("#anon").checked},$("#anon").checked?"Gracias. Se envió en forma anónima.":"Gracias. Se envió a Dirección.").catch(()=>{});
   $("#sug").value=""; $("#anon").checked=false;
 };
 $("#q").addEventListener("input",e=>renderAsk(e.target.value));
+document.addEventListener("change", async e=>{
+  if(e.target.id==="areasel"){ areaFiltro=e.target.value; return renderCal(); }
+  if(e.target.id!=="verpick") return;
+  const mail=e.target.value; openSheet(null);
+  if(!mail){ if(verComo){ verComo=null; imgs={}; if(datosPropios) setDatos(datosPropios); go("inicio"); } return; }
+  verComo=mail; imgs={}; cargando(true);
+  try { setDatos(await api("init")); stack=[]; go("inicio"); cargarImagenes(); }
+  catch(err){ verComo=null; if(datosPropios) setDatos(datosPropios); toast(err.message); }
+  finally { cargando(false); }
+});
 $("#qi").addEventListener("input",renderInt);
 $("#back").onclick=()=>{ stack.pop(); go(tab); };
 $("#prev").onclick=()=>{ calMes=new Date(calMes.getFullYear(),calMes.getMonth()-1,1); calSel=null; renderCal(); };
 $("#next").onclick=()=>{ calMes=new Date(calMes.getFullYear(),calMes.getMonth()+1,1); calSel=null; renderCal(); };
-$("#me").onclick=()=>{ $("#lastsync").textContent = ultimaCarga?"Última actualización: "+new Date(ultimaCarga).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}):""; openSheet("me"); };
+$("#me").onclick=()=>{
+  const base = datosPropios || S;
+  $("#vercomo").innerHTML = (base && base.P && base.P.admin && base.personas) ? `<div style="margin-top:16px;font-size:13px;font-weight:600;color:var(--cemento)">VISTA PREVIA (solo vos)</div>
+    <select class="verpick" id="verpick"><option value="">Ver la app como…</option>${base.personas.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(p=>`<option value="${esc(p.mail)}" ${p.mail===verComo?"selected":""}>${esc(p.nombre)}${p.area?" · "+esc(p.area):""}</option>`).join("")}</select>` : "";
+  $("#lastsync").textContent = ultimaCarga?"Última actualización: "+new Date(ultimaCarga).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}):""; openSheet("me"); };
 $("#scrim").onclick=()=>openSheet(null);
 $("#refresh").onclick=()=>{ openSheet(null); recargar(false); cargarImagenes(); };
 $("#install").onclick=()=>{ openSheet(null); instalar(); };
