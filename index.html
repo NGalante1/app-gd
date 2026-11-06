@@ -782,7 +782,7 @@ function renderCal(){
   }
   $("#grid").innerHTML=h;
   $("#layers").innerHTML = `<button class="layer c ${capas.c?"on":""}" data-layer="c"><i></i>Comunicados</button><button class="layer f ${capas.f?"on":""}" data-layer="f"><i></i>Feriados</button><button class="layer v ${capas.v?"on":""}" data-layer="v"><i></i>${S.P.ausencias==="PROPIAS"?"Mis vacaciones":"Vacaciones del equipo"}</button>`
-    + (S.P.ausencias==="TODAS" ? `<select class="areasel" id="areasel">${["Todas",...new Set(S.ausencias.map(a=>a.area).filter(Boolean))].sort((a,b)=>a==="Todas"?-1:b==="Todas"?1:a.localeCompare(b)).map(a=>`<option ${a===areaFiltro?"selected":""}>${esc(a)}</option>`).join("")}</select>` : "");
+    + (S.P.ausencias==="TODAS" ? `<select class="areasel" id="areasel">${["Todas",...new Set((S.areas&&S.areas.length?S.areas:S.ausencias.map(a=>a.area)).filter(Boolean))].sort((a,b)=>a==="Todas"?-1:b==="Todas"?1:a.localeCompare(b)).map(a=>`<option ${a===areaFiltro?"selected":""}>${esc(a)}</option>`).join("")}</select>` : "");
   const lista = calSel ? ev.filter(e=>e.fecha<=calSel && e.fin>=calSel) : ev.filter(e=>e.fecha<=iso(new Date(y,m,n)) && e.fin>=iso(new Date(y,m,1)));
   $("#evtitle").textContent = calSel ? d(calSel).getDate()+" de "+MESES[d(calSel).getMonth()] : "Este mes";
   $("#evlist").innerHTML = lista.length?lista.map(evRow).join(""):`<div class="empty">${calSel?"Sin novedades ese día":"Sin fechas este mes"}</div>`;
