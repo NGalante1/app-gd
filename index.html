@@ -377,6 +377,8 @@ nav button{font-size:10.5px}
 .verpick{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;margin-top:6px}
 .grid .d .cnt{position:absolute;top:3px;right:3px;min-width:15px;height:15px;border-radius:8px;background:#2F7DA8;color:#fff;font-size:10px;font-weight:600;line-height:15px;text-align:center;padding:0 3px}
 .grid .d.sel .cnt{background:#fff;color:#2F7DA8}
+.saldo .sgrp{grid-column:1/-1;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ladrillo-d);margin-top:8px;padding-top:6px;border-top:1px solid var(--line)}
+.saldo .sgrp:nth-of-type(5){border-top:0;margin-top:2px}
 .err{padding:14px;background:#F6E1E1;color:#8a2a2a;border-radius:var(--r);font-size:14px;margin-top:12px}
 </style>
 <script src="config.js"></script>
@@ -513,9 +515,10 @@ nav button{font-size:10.5px}
     <label class="field" style="margin-top:12px"><span>Título</span><input id="ctit" maxlength="120" placeholder="Ej: Cambio de horario el viernes"></label>
     <label class="field"><span>Texto</span><textarea id="ctxt"></textarea></label>
     <div class="two">
-      <label class="field"><span>Tipo</span><select id="ctipo"><option>Aviso</option><option>Recordatorio</option><option>Feriado</option><option>Obra</option></select></label>
+      <label class="field"><span>Tipo</span><select id="ctipo"><option>Aviso</option><option>Recordatorio</option><option>Día no laborable</option><option>Obra</option></select></label>
       <label class="field"><span>Fecha en calendario</span><input type="date" id="cfecha"></label>
     </div>
+    <label class="field" id="chastawrap"><span>Hasta (opcional, si dura varios días)</span><input type="date" id="chasta"></label>
     <label class="field"><span>Deja de mostrarse el (opcional)</span><input type="date" id="cvence"></label>
     <div class="field"><span>Para</span></div>
     <div class="pick" id="cpara"></div>
@@ -664,7 +667,8 @@ const fmtCorto = s => { const x=d(s); return x.getDate()+" "+MESES[x.getMonth()]
 const rango = (a,b) => fmtCorto(a)+(a===b?"":" al "+fmtCorto(b));
 const diasCorridos = (a,b) => Math.round((d(b)-d(a))/864e5)+1;
 const norm = s => String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
-const tagCls = t => ({feriado:"gris", obra:"verde"})[norm(t)]||"";
+const tagCls = t => ({feriado:"gris", "dia no laborable":"gris", obra:"verde"})[norm(t)]||"";
+const esDiaLibre = t => /feriado|no laborable/.test(norm(t));
 function fmtTel(n){ const x=String(n).replace(/\D/g,""); if(x.length===10) return x.startsWith("11")?`${x.slice(0,2)} ${x.slice(2,6)}-${x.slice(6)}`:`${x.slice(0,3)} ${x.slice(3,6)}-${x.slice(6)}`; return String(n); }
 function fmtCuit(c){ const x=String(c||"").replace(/\D/g,""); return x.length===11?`${x.slice(0,2)}-${x.slice(2,10)}-${x.slice(10)}`:String(c||""); }
 function abrir(url){ if(url) window.open(url, "_blank", "noopener"); }
@@ -700,7 +704,7 @@ function renderInicio(){
     return `<div class="card com ${c.fijo?"pin":""}">
       <div class="meta"><span class="tag ${tagCls(c.tipo)}">${esc(c.tipo)}</span><span>${c.publicado?fmtCorto(c.publicado):""}</span>${c.fijo?"<span>· Fijado</span>":""}${nuevo?'<span class="newtag">Pendiente</span>':""}</div>
       <b>${esc(c.titulo)}</b><p>${esc(c.texto).replace(/\n/g,"<br>")}</p>
-      ${c.fecha?`<button class="cal" data-cal="${c.fecha}">${I.cal} En el calendario: ${fmtCorto(c.fecha)}</button>`:""}
+      ${c.fecha?`<button class="cal" data-cal="${c.fecha}">${I.cal} En el calendario: ${c.hasta&&c.hasta>c.fecha?rango(c.fecha,c.hasta):fmtCorto(c.fecha)}</button>`:""}
       ${S.P.publicar && c.para?`<div class="para">Para: ${c.para.split(",").map(x=>`<span>${esc(x.trim())}</span>`).join("")}</div>`:""}
       ${c.lectura?`<div class="readrow">
         ${c.meLlega?`<button class="readbtn ${c.leido?"done":""}" data-leer="${esc(c.id)}">${c.leido?"✓ Leído":"Marcar como leído"}</button>`:"<span></span>"}
@@ -750,7 +754,8 @@ function renderDetalle(o){
 /* ========================== CALENDARIO ========================== */
 function eventos(todo){
   const out=[];
-  if(todo||capas.c) S.comunicados.filter(c=>c.fecha && c.meLlega).forEach(c=>out.push({fecha:c.fecha,fin:c.fecha,titulo:c.titulo,sub:c.tipo,tipo:"c"}));
+  S.comunicados.filter(c=>c.fecha && c.meLlega).forEach(c=>{ const libre=esDiaLibre(c.tipo);
+    if(todo || (libre?capas.f:capas.c)) out.push({fecha:c.fecha,fin:(c.hasta&&c.hasta>c.fecha)?c.hasta:c.fecha,titulo:c.titulo,sub:libre?"G&D":c.tipo,tipo:libre?"f":"c"}); });
   if(todo||capas.f) S.feriados.forEach(f=>out.push({fecha:f.fecha,fin:f.fecha,titulo:f.titulo,sub:f.origen==="G&D"?"G&D":"Feriado nacional",tipo:"f"}));
   if(!todo && capas.v) S.ausencias.filter(a=>areaFiltro==="Todas"||a.area===areaFiltro||a.propio).forEach(a=>out.push({fecha:a.desde,fin:a.hasta,titulo:a.propio?"Tus vacaciones":a.nombre+" · vacaciones",sub:a.area+" · "+rango(a.desde,a.hasta),tipo:"v"}));
   if(todo) S.ausencias.filter(a=>a.propio).forEach(a=>out.push({fecha:a.desde,fin:a.hasta,titulo:"Tus vacaciones",sub:rango(a.desde,a.hasta),tipo:"v"}));
@@ -759,7 +764,7 @@ function eventos(todo){
 function evRow(e){
   const x=d(e.fecha), col={c:"var(--ladrillo)",f:"var(--cemento)",v:"#2F7DA8"}[e.tipo];
   return `<div class="ev"><div class="dt"><b style="color:${col}">${x.getDate()}</b><span>${MESES[x.getMonth()].slice(0,3)}</span></div>
-    <div class="t"><b>${esc(e.titulo)}</b><span>${e.tipo==="v"?esc(e.sub):DIAS[x.getDay()]+" · "+esc(e.sub)}</span></div></div>`;
+    <div class="t"><b>${esc(e.titulo)}</b><span>${e.tipo==="v"?esc(e.sub):(e.fin>e.fecha?rango(e.fecha,e.fin):DIAS[x.getDay()])+" · "+esc(e.sub)}</span></div></div>`;
 }
 function renderCal(){
   const y=calMes.getFullYear(), m=calMes.getMonth();
@@ -833,13 +838,13 @@ function renderGestiones(){
   const vac = S.P.vacaciones !== false;
   $("#pedir").hidden = !vac; $("#misbloque").hidden = !vac;
   $("#flowtxt").textContent = `Aprueba ${S.flujo.paso1} → valida ${S.flujo.paso2}`;
-  $("#misaldo").innerHTML = S.miSaldo ? `<div class="card saldo-mio"><div><div style="font-weight:600">Tus días disponibles</div><div class="mute" style="font-size:13px">Te corresponden ${S.miSaldo.corresponden} · tomaste ${S.miSaldo.tomados}</div></div><b>${S.miSaldo.quedan}</b></div>` : "";
+  $("#misaldo").innerHTML = S.miSaldo ? `<div class="card saldo-mio"><div><div style="font-weight:600">Tus días disponibles</div><div class="mute" style="font-size:13px">${S.miSaldo.corresponden?`${S.miSaldo.corresponden} días por año · `:""}tomaste ${S.miSaldo.tomados} desde el ${fmtCorto(S.miSaldo.desde)}</div></div><b>${S.miSaldo.quedan}</b></div>` : "";
   const pend=S.porAprobar, ve = pend.length || S.P.validar || S.P.admin || S.P.ausencias==="SU AREA";
   $("#aprobar").innerHTML = ve ? `<h2>${S.P.validar?"Por aprobar y validar":"Por aprobar"}${pend.length?`<span class="badge">${pend.length}</span>`:""}</h2>
      <div class="list">${pend.length?pend.map(r=>reqCard(r,true)).join(""):`<div class="empty">No hay pedidos pendientes</div>`}</div>` : "";
-  $("#saldos").innerHTML = S.saldos ? `<h2>Saldo de días</h2><div class="card"><div class="saldo">
-      <span class="hd">Persona</span><span class="hd n">Corresp.</span><span class="hd n">Tomados</span><span class="hd n">Quedan</span>
-      ${S.saldos.map(p=>`<span>${esc(p.nombre)}</span><span class="n">${p.corresponden}</span><span class="n">${p.tomados}</span><span class="n disp ${p.quedan<=5?"low":""}">${p.quedan}</span>`).join("")}
+  $("#saldos").innerHTML = (S.saldos && S.saldos.length) ? `<h2>Saldo de días${S.P.saldos==="AREA"?" · tu área":""}</h2><div class="card"><div class="saldo">
+      <span class="hd">Persona</span><span class="hd n">Por año</span><span class="hd n">Tomados</span><span class="hd n">Quedan</span>
+      ${[...new Set(S.saldos.map(p=>p.area||"Sin área"))].map(a=>`<span class="sgrp">${esc(a)}</span>`+S.saldos.filter(p=>(p.area||"Sin área")===a).map(p=>`<span>${esc(p.nombre)}</span><span class="n">${p.corresponden}</span><span class="n">${p.tomados}</span><span class="n disp ${p.quedan<=5?"low":""}">${p.quedan}</span>`).join("")).join("")}
     </div></div>` : "";
   $("#mios").innerHTML = S.pedidos.length?S.pedidos.map(r=>reqCard(r,false)).join(""):`<div class="empty">Todavía no pediste vacaciones</div>`;
   const U=S.uso;
@@ -922,7 +927,7 @@ document.addEventListener("click", async e=>{
   if(b.id==="salirprevia"){ verComo=null; imgs={}; if(datosPropios) setDatos(datosPropios); go("inicio"); recargar(true); cargarImagenes(); return; }
   if((b.dataset.rech||b.id==="newcom"||b.id==="editobra") && enPrevia()) return;
   if(b.dataset.rech){ rechId=b.dataset.rech; const r=S.porAprobar.find(x=>x.id===rechId); $("#rechinfo").textContent=r?`${r.nombre} · ${rango(r.desde,r.hasta)}`:""; $("#rmotivo").value=""; return openSheet("rech"); }
-  if(b.id==="newcom"){ paraSel=new Set(["todos"]); persSel=new Set(); persAbierto=false; ["#ctit","#ctxt","#cfecha","#cvence"].forEach(s=>$(s).value=""); $("#clect").checked=false; $("#cmail").checked=true; $("#cfijo").checked=false; renderPara(); return openSheet("com"); }
+  if(b.id==="newcom"){ paraSel=new Set(["todos"]); persSel=new Set(); persAbierto=false; ["#ctit","#ctxt","#cfecha","#cvence","#chasta"].forEach(s=>$(s).value=""); $("#clect").checked=false; $("#cmail").checked=true; $("#cfijo").checked=false; renderPara(); return openSheet("com"); }
   if(b.dataset.para){
     const a=b.dataset.para;
     if(a==="__pers"){ persAbierto=!persAbierto; paraSel.delete("todos"); }
@@ -947,7 +952,7 @@ $("#csend").onclick = async ()=>{
   if(!t||!x) return toast("Completá título y texto");
   if(!paraSel.has("todos") && !paraActual().length) return toast("Elegí a quién va");
   openSheet(null);
-  await accion("publicar",{titulo:t,texto:x,tipo:$("#ctipo").value,fecha:$("#cfecha").value||"",vence:$("#cvence").value||"",para:paraActual(),lectura:$("#clect").checked,mail:$("#cmail").checked,fijo:$("#cfijo").checked},"Comunicado publicado").catch(()=>{});
+  await accion("publicar",{titulo:t,texto:x,tipo:$("#ctipo").value,fecha:$("#cfecha").value||"",hasta:$("#chasta").value||"",vence:$("#cvence").value||"",para:paraActual(),lectura:$("#clect").checked,mail:$("#cmail").checked,fijo:$("#cfijo").checked},"Comunicado publicado").catch(()=>{});
   go("inicio");
 };
 function achicarImagen(file){

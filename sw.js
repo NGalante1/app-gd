@@ -1,5 +1,5 @@
 // G&D · service worker: guarda la "cáscara" de la app para que abra rápido. Los datos siempre vienen de la API.
-const VERSION = "gd-v1.2";
+const VERSION = "gd-v1.4";
 const ARCHIVOS = ["./", "index.html", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(ARCHIVOS)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
