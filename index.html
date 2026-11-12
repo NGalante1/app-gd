@@ -452,9 +452,8 @@ nav button{font-size:10.5px}
       <div id="misaldo"></div>
       <div id="aprobar"></div>
       <div id="saldos"></div>
-      <div id="misbloque"><h2>Mis pedidos</h2>
+      <div id="misbloque"><h2 id="mistit">Mis pedidos</h2>
       <div class="list" id="mios"></div></div>
-      <div id="uso"></div>
       <h2>Buzón de sugerencias</h2>
       <div class="card" style="padding:14px">
         <div class="mute" style="font-size:14px;margin-bottom:10px">¿Algo se podría hacer mejor o más simple? Lo lee Dirección.</div>
@@ -462,6 +461,7 @@ nav button{font-size:10.5px}
         <label class="check"><input type="checkbox" id="anon">Enviar en forma anónima</label>
         <button class="btn pri big" id="sugsend">Enviar sugerencia</button>
       </div>
+      <div id="uso"></div>
     </section>
   </main>
 
@@ -863,6 +863,7 @@ function habilesEntre(a,b){
 function renderGestiones(){
   const vac = S.P.vacaciones !== false;
   $("#pedirlbl").textContent = vac ? "Pedir vacaciones" : "Cargar mis vacaciones";
+  $("#mistit").textContent = vac ? "Mis pedidos" : "Mis vacaciones";
   $("#flowtxt").textContent = vac ? `Aprueba ${S.flujo.paso1} → valida ${S.flujo.paso2}` : "Sin aprobación · las ven responsables, Dirección y Mariana";
   $("#misaldo").innerHTML = S.miSaldo ? `<div class="card saldo-mio"><div><div style="font-weight:600">Tus días disponibles</div><div class="mute" style="font-size:13px">${S.miSaldo.corresponden?`${S.miSaldo.corresponden} días por año · `:""}tomaste ${S.miSaldo.tomados} desde el ${fmtCorto(S.miSaldo.desde)}</div></div><b>${S.miSaldo.quedan}</b></div>` : "";
   const pend=S.porAprobar, ve = pend.length || S.P.validar || S.P.admin || S.P.ausencias==="SU AREA";
