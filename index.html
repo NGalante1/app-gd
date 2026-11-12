@@ -704,10 +704,10 @@ function renderInicio(){
   if(S.P.ausencias !== "PROPIAS"){
     const fin = new Date(h); fin.setDate(h.getDate()+13);
     const aus = S.ausencias.filter(a => !a.propio && a.desde<=iso(fin) && a.hasta>=S.hoy);
-    $("#ausentes").innerHTML = `<h2>Ausencias próximas</h2><div class="card out-card">
+    $("#ausentes").innerHTML = !aus.length ? "" : `<h2>Ausencias próximas</h2><div class="card out-card">
       <div class="ttl"><b>Próximas 2 semanas</b><span class="mute" style="font-size:12px">${S.P.ausencias==="TODAS"?"todas las áreas":"tu área"}</span></div>
       ${aus.length?aus.map(a=>`<div class="who"><span>${esc(a.nombre)} · <span class="mute">${esc(a.area)}</span></span><span>${rango(a.desde,a.hasta)}</span></div>`).join(""):`<div class="mute" style="font-size:14px">Nadie de vacaciones.</div>`}
-      <div class="priv">${I.lock} Solo lo ven responsables y Dirección</div></div>`;
+      <div class="priv">${I.lock} Solo lo ven responsables, Dirección y Validación</div></div>`;
   } else $("#ausentes").innerHTML = "";
   $("#coms").innerHTML = S.comunicados.map(c => {
     const nuevo = c.meLlega && c.lectura && !c.leido;
@@ -841,9 +841,24 @@ function reqCard(r, acc){
       <span class="s">${acc?esc(r.area)+" · "+rango(r.desde,r.hasta)+" · ":""}${r.dias} días corridos${r.com?" · "+esc(r.com):""}</span></div>
       <span class="status ${cls}">${txt}</span></div>
     ${pasos(r)}
+    ${r.aviso?`<div style="font-size:13px;margin-top:6px;color:#B5452A;font-weight:600">${esc(r.aviso)}</div>`:""}
     ${r.estado==="Rechazado"&&r.motivo?`<div class="mute" style="font-size:13px;margin-top:6px">Motivo: ${esc(r.motivo)}</div>`:""}
     ${acc?`<div class="acts"><button class="btn sec" data-rech="${esc(r.id)}">Rechazar</button><button class="btn pri" data-apr="${esc(r.id)}">${r.estado==="Espera aprobación"?"Aprobar":"Validar"}</button></div>`:""}
   </div>`;
+}
+// Excel (CSV con ; y BOM, abre directo en Excel en español)
+function descargarSaldos(){
+  const fd = x => x ? x.split("-").reverse().join("/") : "";
+  const cols = ["Nombre","Área","Fecha de ingreso","Antigüedad (años)","Días por año","Saldo inicial","Acreditados","Tomados","Pendientes de aprobar","Quedan","A descontar del sueldo"];
+  const filas = S.saldos.map(p=>[p.nombre,p.area,fd(p.ingreso),p.antig,p.corresponden,p.inicial,p.acreditados,p.tomados,p.pendientes,p.quedan,p.quedan<0?-p.quedan:0]);
+  const csv = "\ufeff" + [cols].concat(filas).map(r=>r.map(v=>`"${String(v==null?"":v).replace(/"/g,'""')}"`).join(";")).join("\r\n");
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download=`Saldos_vacaciones_${S.hoy}.csv`; document.body.appendChild(a); a.click(); a.remove();
+}
+function habilesEntre(a,b){
+  const fer=new Set((S.feriados||[]).map(f=>f.fecha)); let n=0; const x=d(a), fin=d(b);
+  while(x<=fin){ const w=x.getDay(); if(w&&w!==6&&!fer.has(iso(x))) n++; x.setDate(x.getDate()+1); }
+  return n;
 }
 function renderGestiones(){
   const vac = S.P.vacaciones !== false;
@@ -855,8 +870,8 @@ function renderGestiones(){
      <div class="list">${pend.length?pend.map(r=>reqCard(r,true)).join(""):`<div class="empty">No hay pedidos pendientes</div>`}</div>` : "";
   $("#saldos").innerHTML = (S.saldos && S.saldos.length) ? `<h2>Saldo de días${S.P.saldos==="AREA"?" · tu área":""}</h2><div class="card"><div class="saldo">
       <span class="hd">Persona</span><span class="hd n">Por año</span><span class="hd n">Tomados</span><span class="hd n">Quedan</span>
-      ${[...new Set(S.saldos.map(p=>p.area||"Sin área"))].map(a=>`<span class="sgrp">${esc(a)}</span>`+S.saldos.filter(p=>(p.area||"Sin área")===a).map(p=>`<span>${esc(p.nombre)}</span><span class="n">${p.corresponden}</span><span class="n">${p.tomados}</span><span class="n disp ${p.quedan<=5?"low":""}">${p.quedan}</span>`).join("")).join("")}
-    </div></div>` : "";
+      ${[...new Set(S.saldos.map(p=>p.area||"Sin área"))].map(a=>`<span class="sgrp">${esc(a)}</span>`+S.saldos.filter(p=>(p.area||"Sin área")===a).map(p=>`<span>${esc(p.nombre)}${p.quedan<0&&(S.P.validar||S.P.admin)?`<br><button class="btn sec" style="margin-top:4px;padding:4px 10px;font-size:12px" data-desc="${esc(p.mail)}">Descontado en sueldo</button>`:""}</span><span class="n">${p.corresponden}</span><span class="n">${p.tomados}</span><span class="n disp ${p.quedan<=5?"low":""}">${p.quedan}</span>`).join("")).join("")}
+    </div></div>${S.P.saldos==="TODOS"?`<button class="btn sec" id="xlsx" style="margin-top:10px;width:100%">Descargar Excel</button>`:""}` : "";
   $("#mios").innerHTML = S.pedidos.length?S.pedidos.map(r=>reqCard(r,false)).join(""):`<div class="empty">${vac?"Todavía no pediste vacaciones":"Todavía no cargaste vacaciones"}</div>`;
   const U=S.uso;
   $("#uso").innerHTML = U ? `<h2>Uso de la app</h2>
@@ -938,6 +953,13 @@ document.addEventListener("click", async e=>{
     api("leer",{id:c.id}).catch(err=>{ c.leido=false; refresh(); toast(err.message); }); return;
   }
   if(b.dataset.apr){ return accion("aprobar",{id:b.dataset.apr},"Listo. Se avisó por mail."); }
+  if(b.dataset.desc){
+    if(enPrevia()) return;
+    const p=S.saldos.find(x=>x.mail===b.dataset.desc);
+    if(!p || !confirm(`¿Confirmás que a ${p.nombre} ya se le descontaron ${-p.quedan} días del sueldo? El saldo vuelve a 0.`)) return;
+    return accion("descontado",{mail:p.mail},"Listo. El saldo quedó en 0.");
+  }
+  if(b.id==="xlsx") return descargarSaldos();
   if(b.id==="salirprevia"){ verComo=null; if(datosPropios) setDatos(datosPropios); go("inicio"); recargar(true); cargarImagenes(); return; }
   if((b.dataset.rech||b.id==="newcom"||b.id==="editobra") && enPrevia()) return;
   if(b.dataset.rech){ rechId=b.dataset.rech; const r=S.porAprobar.find(x=>x.id===rechId); $("#rechinfo").textContent=r?`${r.nombre} · ${rango(r.desde,r.hasta)}`:""; $("#rmotivo").value=""; return openSheet("rech"); }
@@ -986,7 +1008,16 @@ $("#eosend").onclick = async ()=>{
     await accion("actualizarObra",{id,etapa:$("#eoetapa").value,fin:$("#eofin").value.trim(),finInterna:$("#eoint").checked,stock:$("#eostock").value==="1"},"Obra actualizada para todos");
   } catch(e){ toast(e.message); cargando(false); }
 };
-function vacPreview(){ const a=$("#vdesde").value, b=$("#vhasta").value; $("#vdias").textContent = a&&b ? (b<a?"La fecha final es anterior a la inicial":diasCorridos(a,b)+" días corridos"+(S.miSaldo?` · te quedan ${S.miSaldo.quedan}`:"")) : ""; }
+function vacPreview(){
+  const a=$("#vdesde").value, b=$("#vhasta").value, el=$("#vdias");
+  if(!a||!b){ el.textContent=""; return; }
+  if(b<a){ el.textContent="La fecha final es anterior a la inicial"; return; }
+  const dc=diasCorridos(a,b), hab=habilesEntre(a,b), vac=S.P.vacaciones!==false;
+  let t=`${dc} días corridos · ${hab} hábiles`;
+  if(vac && hab<3) t+=" · el mínimo es 3 días hábiles";
+  if(vac && S.miSaldo){ const q=S.miSaldo.quedan-dc; t+=` · te quedan ${S.miSaldo.quedan}`; if(q<0) t+=` · ${Math.min(-q,dc)} días se descuentan del sueldo`; }
+  el.textContent=t;
+}
 $("#pedir").onclick=()=>{
   if(enPrevia()) return;
   const vac = S.P.vacaciones !== false;
