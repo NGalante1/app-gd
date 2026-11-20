@@ -707,9 +707,9 @@ function renderInicio(){
     const fin = new Date(h); fin.setDate(h.getDate()+13);
     const aus = S.ausencias.filter(a => !a.propio && a.desde<=iso(fin) && a.hasta>=S.hoy);
     $("#ausentes").innerHTML = !aus.length ? "" : `<h2>Ausencias próximas</h2><div class="card out-card">
-      <div class="ttl"><b>Próximas 2 semanas</b><span class="mute" style="font-size:12px">${S.P.ausencias==="TODAS"?"todas las áreas":"tu área"}</span></div>
+      <div class="ttl"><b>Próximas 2 semanas</b><span class="mute" style="font-size:12px">${S.P.ausencias==="TODAS"?"todas las áreas":"tu área y Dirección"}</span></div>
       ${aus.length?aus.map(a=>`<div class="who"><span>${esc(a.nombre)} · <span class="mute">${esc(a.area)}</span></span><span>${rango(a.desde,a.hasta)}</span></div>`).join(""):`<div class="mute" style="font-size:14px">Nadie de vacaciones.</div>`}
-      <div class="priv">${I.lock} Solo lo ven responsables, Dirección y Validación</div></div>`;
+      <div class="priv">${I.lock} ${S.P.aprueba?"Solo lo ven responsables, Dirección y Validación":"Tu área y Dirección"}</div></div>`;
   } else $("#ausentes").innerHTML = "";
   $("#coms").innerHTML = S.comunicados.map(c => {
     const nuevo = c.meLlega && c.lectura && !c.leido;
@@ -769,7 +769,7 @@ function eventos(todo){
   S.comunicados.filter(c=>c.fecha && c.meLlega).forEach(c=>{ const libre=esDiaLibre(c.tipo);
     if(todo || (libre?capas.f:capas.c)) out.push({fecha:c.fecha,fin:(c.hasta&&c.hasta>c.fecha)?c.hasta:c.fecha,titulo:c.titulo,sub:libre?"G&D":c.tipo,tipo:libre?"f":"c"}); });
   if(todo||capas.f) S.feriados.forEach(f=>out.push({fecha:f.fecha,fin:f.fecha,titulo:f.titulo,sub:f.origen==="G&D"?"G&D":"Feriado nacional",tipo:"f"}));
-  if(!todo && capas.v) S.ausencias.filter(a=>areaFiltro==="Todas"||a.area===areaFiltro||a.propio).forEach(a=>out.push({fecha:a.desde,fin:a.hasta,titulo:a.propio?(a.lic?"Tu licencia":"Tus vacaciones"):a.nombre+(a.lic?" · licencia":" · vacaciones"),sub:a.area+" · "+rango(a.desde,a.hasta),tipo:"v"}));
+  if(!todo && capas.v) S.ausencias.filter(a=>areaFiltro==="Todas"||a.area===areaFiltro||a.propio).forEach(a=>out.push({fecha:a.desde,fin:a.hasta,titulo:a.propio?(a.lic?"Tu licencia":"Tus vacaciones"):a.nombre+(a.ausente?" · ausente":a.lic?" · licencia":" · vacaciones"),sub:a.area+" · "+rango(a.desde,a.hasta),tipo:"v"}));
   if(todo) S.ausencias.filter(a=>a.propio).forEach(a=>out.push({fecha:a.desde,fin:a.hasta,titulo:a.lic?"Tu licencia":"Tus vacaciones",sub:rango(a.desde,a.hasta),tipo:"v"}));
   return out.sort((a,b)=>a.fecha.localeCompare(b.fecha));
 }
@@ -839,8 +839,8 @@ function pasos(r){
 function reqCard(r, acc){
   const [cls,txt]=ESTADO[r.estado]||["pend",r.estado];
   return `<div class="req"><div class="h"><div>
-      <b>${acc?esc(r.nombre):rango(r.desde,r.hasta)}</b>
-      <span class="s">${acc?esc(r.area)+" · "+rango(r.desde,r.hasta)+" · ":""}${r.lic?"<b>Licencia</b> · ":""}${r.dias} días corridos${r.com?" · "+esc(r.com):""}</span></div>
+      <b>${acc&&S.porAprobar.length>1?`<input type="checkbox" class="selped" data-sel="${esc(r.id)}" style="width:18px;height:18px;vertical-align:-3px;margin-right:6px;accent-color:#DF6436">`:""}${acc?esc(r.nombre):rango(r.desde,r.hasta)}</b>
+      <span class="s">${acc?esc(r.area)+" · "+rango(r.desde,r.hasta)+" · ":""}${r.lic?"<b>Licencia</b> · ":""}${r.dias} ${r.dias===1?"día corrido":"días corridos"}${r.com?" · "+esc(r.com):""}</span></div>
       <span class="status ${cls}">${txt}</span></div>
     ${pasos(r)}
     ${r.aviso?`<div style="font-size:13px;margin-top:6px;color:#B5452A;font-weight:600">${esc(r.aviso)}</div>`:""}
@@ -868,8 +868,9 @@ function renderGestiones(){
   $("#mistit").textContent = vac ? "Mis pedidos" : "Mis vacaciones";
   $("#flowtxt").textContent = vac ? `Aprueba ${S.flujo.paso1} → valida ${S.flujo.paso2}` : "Sin aprobación · las ven responsables, Dirección y Mariana";
   $("#misaldo").innerHTML = S.miSaldo ? `<div class="card saldo-mio"><div><div style="font-weight:600">Tus días disponibles</div><div class="mute" style="font-size:13px">${S.miSaldo.corresponden?`${S.miSaldo.corresponden} días por año · `:""}tomaste ${S.miSaldo.tomados} desde el ${fmtCorto(S.miSaldo.desde)}</div></div><b>${S.miSaldo.quedan}</b></div>` : "";
-  const pend=S.porAprobar, ve = pend.length || S.P.validar || S.P.admin || S.P.ausencias==="SU AREA";
+  const pend=S.porAprobar, ve = pend.length || S.P.aprueba;
   $("#aprobar").innerHTML = ve ? `<h2>${S.P.validar?"Por aprobar y validar":"Por aprobar"}${pend.length?`<span class="badge">${pend.length}</span>`:""}</h2>
+     ${pend.length>1?`<div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn sec" id="selall" style="flex:1">Seleccionar todos</button><button class="btn pri" id="aprsel" style="flex:1">Aprobar seleccionados</button></div>`:""}
      <div class="list">${pend.length?pend.map(r=>reqCard(r,true)).join(""):`<div class="empty">No hay pedidos pendientes</div>`}</div>` : "";
   const D=S.descuentos;
   $("#descuentos").innerHTML = D && (D.length || S.P.liquidacion) ? `<h2>A descontar del sueldo${D.length?`<span class="badge">${D.length}</span>`:""}</h2>
@@ -967,6 +968,15 @@ document.addEventListener("click", async e=>{
     return accion("descontado",{mail:p.mail},"Listo. El saldo quedó en 0.");
   }
   if(b.id==="xlsx") return descargarSaldos();
+  if(b.id==="selall"){ const cs=[...document.querySelectorAll(".selped")], todos=cs.every(c=>c.checked); cs.forEach(c=>c.checked=!todos); b.textContent=todos?"Seleccionar todos":"Quitar selección"; return; }
+  if(b.id==="aprsel"){
+    if(enPrevia()) return;
+    const ids=[...document.querySelectorAll(".selped:checked")].map(c=>c.dataset.sel);
+    if(!ids.length) return toast("Tildá los pedidos que querés aprobar");
+    const negs=S.porAprobar.filter(r=>ids.includes(String(r.id))&&r.aviso).length;
+    if(!confirm(`¿Aprobar/validar ${ids.length} pedido${ids.length>1?"s":""}?${negs?`\n\nOjo: ${negs} deja${negs>1?"n":""} el saldo en negativo (descuento en sueldo).`:""}`)) return;
+    return accion("aprobarVarios",{ids},`Listo: ${ids.length} pedido${ids.length>1?"s":""}. Se avisó por mail.`);
+  }
   if(b.id==="salirprevia"){ verComo=null; if(datosPropios) setDatos(datosPropios); go("inicio"); recargar(true); cargarImagenes(); return; }
   if((b.dataset.rech||b.id==="newcom"||b.id==="editobra") && enPrevia()) return;
   if(b.dataset.rech){ rechId=b.dataset.rech; const r=S.porAprobar.find(x=>x.id===rechId); $("#rechinfo").textContent=r?`${r.nombre} · ${rango(r.desde,r.hasta)}`:""; $("#rmotivo").value=""; return openSheet("rech"); }
